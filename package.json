@@ -1,5 +1,5 @@
 {
-  "name": "@valuthringer/gst-kit",
+  "name": "gst-kit",
   "version": "0.2.4-val.1",
   "type": "module",
   "exports": {
@@ -52,9 +52,9 @@
   "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "git@github.com:repugraf/gst-kit.git"
+    "url": "git+https://github.com/valuthringer/gst-kit-fork-valuthringer.git"
   },
-  "homepage": "https://github.com/repugraf/gst-kit",
+  "homepage": "https://github.com/valuthringer/gst-kit-fork-valuthringer",
   "description": "Node.js binding for GStreamer, providing high-level APIs for multimedia streaming and processing",
   "dependencies": {
     "node-addon-api": "8.5.0",
@@ -76,9 +76,6 @@
     "tslib": "2.8.1",
     "typescript": "5.9.3",
     "vitest": "4.0.18"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "overrides": {
     "vitest": {

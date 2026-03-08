@@ -6,6 +6,9 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: write
+
 jobs:
   build-prebuilds:
     name: Build prebuilds (${{ matrix.os }})
@@ -172,8 +175,8 @@ jobs:
           name: prebuilds-linux-${{ matrix.arch }}-node${{ matrix.node }}
           path: prebuilds/
 
-  publish:
-    name: Publish npm package
+  release:
+    name: GitHub Release (tarball)
     needs: [build-prebuilds, build-prebuilds-linux-arm]
     runs-on: ubuntu-latest
 
@@ -185,30 +188,9 @@ jobs:
         with:
           node-version: 22.x
           cache: npm
-          registry-url: https://registry.npmjs.org
-          scope: "@valuthringer"
-          always-auth: true
-
-      - name: Verify npm auth token
-        shell: bash
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "Missing secrets.NPM_TOKEN (create an npm access token with publish rights and add it as a repo secret)."
-            exit 1
-          fi
-
-      - name: Configure npm auth
-        shell: bash
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          npm config set //registry.npmjs.org/:_authToken="$NODE_AUTH_TOKEN"
-          npm whoami
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm install --no-audit --no-fund --ignore-scripts
 
       - name: Build TypeScript dist
         run: npm run build:ts
@@ -224,7 +206,17 @@ jobs:
           mkdir -p prebuilds
           find _prebuilds -type f -path '*/prebuilds/*' -print -exec bash -lc 'dst="prebuilds/${1#*prebuilds/}"; mkdir -p "$(dirname "$dst")"; cp -f "$1" "$dst"' _ {} \;
 
-      - name: Publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish
+      - name: Pack tarball
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARBALL=$(npm pack --silent)
+          echo "TARBALL=$TARBALL" >> "$GITHUB_ENV"
+          ls -lh "$TARBALL"
+
+      - name: Create GitHub Release + upload tarball
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            ${{ env.TARBALL }}
