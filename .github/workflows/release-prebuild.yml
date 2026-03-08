@@ -121,6 +121,7 @@ jobs:
         with:
           name: prebuilds-${{ matrix.os }}-node${{ matrix.node-version }}
           path: prebuilds/
+          if-no-files-found: error
 
   build-prebuilds-linux-arm:
     name: Build prebuilds (linux ${{ matrix.arch }} / Node ${{ matrix.node }})
@@ -174,6 +175,7 @@ jobs:
         with:
           name: prebuilds-linux-${{ matrix.arch }}-node${{ matrix.node }}
           path: prebuilds/
+          if-no-files-found: error
 
   release:
     name: GitHub Release (tarball)
@@ -201,10 +203,69 @@ jobs:
           path: _prebuilds
 
       - name: Merge prebuilds
+        shell: bash
         run: |
+          set -euo pipefail
           rm -rf prebuilds
           mkdir -p prebuilds
-          find _prebuilds -type f -path '*/prebuilds/*' -print -exec bash -lc 'dst="prebuilds/${1#*prebuilds/}"; mkdir -p "$(dirname "$dst")"; cp -f "$1" "$dst"' _ {} \;
+
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+
+          const root = path.resolve('_prebuilds');
+          const outRoot = path.resolve('prebuilds');
+
+          function walk(dir) {
+            const entries = fs.readdirSync(dir, { withFileTypes: true });
+            for (const ent of entries) {
+              const p = path.join(dir, ent.name);
+              if (ent.isDirectory()) walk(p);
+              else if (ent.isFile()) yieldFile(p);
+            }
+          }
+
+          let copied = 0;
+          function yieldFile(filePath) {
+            const rel = path.relative(root, filePath);
+            const parts = rel.split(path.sep).filter(Boolean);
+
+            // download-artifact layout is usually: _prebuilds/<artifactName>/<...>
+            // but handle any layout defensively.
+            const innerParts = parts.length >= 2 ? parts.slice(1) : parts;
+
+            // If the artifact preserved a leading prebuilds/ directory, strip it.
+            if (innerParts[0] === 'prebuilds') innerParts.shift();
+
+            if (innerParts.length === 0) return;
+
+            const dst = path.join(outRoot, ...innerParts);
+            fs.mkdirSync(path.dirname(dst), { recursive: true });
+            fs.copyFileSync(filePath, dst);
+            copied++;
+          }
+
+          if (!fs.existsSync(root)) {
+            console.error('No _prebuilds directory found');
+            process.exit(1);
+          }
+
+          walk(root);
+          console.log(`Copied ${copied} file(s) into prebuilds/`);
+          NODE
+
+      - name: Verify prebuilds exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "prebuilds tree:";
+          find prebuilds -maxdepth 3 -type f -print || true
+          if ! find prebuilds -type f -name '*.node' -print -quit | grep -q .; then
+            echo "ERROR: No .node files found in prebuilds/; release tarball would be unusable."
+            echo "Downloaded artifacts:";
+            find _prebuilds -maxdepth 4 -type f -print || true
+            exit 1
+          fi
 
       - name: Pack tarball
         shell: bash
