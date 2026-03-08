@@ -1,6 +1,8 @@
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 // Get the directory name of the current module
 const __filename = fileURLToPath(import.meta.url);
@@ -8,6 +10,105 @@ const __dirname = dirname(__filename);
 
 // Get the project root directory (two levels up from __dirname)
 const projectRoot = join(__dirname, "../../");
+
+function addToPath(binDir: string) {
+  if (!binDir) return;
+  const delimiter = path.delimiter;
+  const current = process.env.PATH || "";
+  const parts = current.split(delimiter).filter(Boolean);
+  const already = parts.some(p => p.toLowerCase() === binDir.toLowerCase());
+  if (!already) {
+    process.env.PATH = `${binDir}${delimiter}${current}`;
+  }
+}
+
+function ensureGStreamerOnPath() {
+  if (process.platform !== "win32") return;
+  if (String(process.env.GST_KIT_NO_GST_ENV || "") === "1") return;
+
+  const isDirectory = (dirPath: string) => {
+    try {
+      return fs.statSync(dirPath).isDirectory();
+    } catch {
+      return false;
+    }
+  };
+
+  const parseVersion = (versionString: string) => {
+    const parts = String(versionString)
+      .trim()
+      .split(".")
+      .map(p => (/^\d+$/.test(p) ? Number(p) : NaN));
+    if (!parts.length || parts.some(n => Number.isNaN(n))) return null;
+    return parts;
+  };
+
+  const compareVersions = (aParts: number[], bParts: number[]) => {
+    const len = Math.max(aParts.length, bParts.length);
+    for (let i = 0; i < len; i++) {
+      const a = aParts[i] ?? 0;
+      const b = bParts[i] ?? 0;
+      if (a !== b) return a - b;
+    }
+    return 0;
+  };
+
+  const findMsvcRootsUnder = (baseDir: string) => {
+    const roots: Array<{ root: string; version: number[] }> = [];
+    try {
+      if (!isDirectory(baseDir)) return roots;
+
+      const entries = fs.readdirSync(baseDir, { withFileTypes: true });
+      for (const ent of entries) {
+        if (!ent.isDirectory()) continue;
+        const versionDir = ent.name;
+        const msvcRoot = path.join(baseDir, versionDir, "msvc_x86_64");
+        const binDir = path.join(msvcRoot, "bin");
+        if (isDirectory(binDir)) {
+          roots.push({ root: msvcRoot, version: parseVersion(versionDir) || [0] });
+        }
+      }
+
+      const directMsvcRoot = path.join(baseDir, "msvc_x86_64");
+      const directBinDir = path.join(directMsvcRoot, "bin");
+      if (isDirectory(directBinDir)) {
+        roots.push({ root: directMsvcRoot, version: [0] });
+      }
+    } catch {
+      return roots;
+    }
+
+    roots.sort((a, b) => compareVersions(a.version, b.version));
+    return roots;
+  };
+
+  const candidates: string[] = [];
+  const rootFromEnv = process.env.GSTREAMER_1_0_ROOT_MSVC_X86_64;
+  if (rootFromEnv) candidates.push(rootFromEnv);
+
+  const bases = ["C:\\Program Files\\gstreamer", "C:\\gstreamer"];
+  for (const base of bases) {
+    const found = findMsvcRootsUnder(base);
+    const best = found.length ? found[found.length - 1].root : null;
+    if (best) candidates.push(best);
+  }
+
+  for (const root of candidates) {
+    if (!root) continue;
+    const binDir = path.join(root, "bin");
+    try {
+      if (fs.existsSync(binDir)) {
+        addToPath(binDir);
+        if (!process.env.GSTREAMER_1_0_ROOT_MSVC_X86_64) {
+          process.env.GSTREAMER_1_0_ROOT_MSVC_X86_64 = root;
+        }
+        return;
+      }
+    } catch {
+      // ignore
+    }
+  }
+}
 
 export type GStreamerPropertyPrimitiveValue = string | number | boolean | bigint;
 export type GStreamerPropertyValue =
@@ -165,6 +266,7 @@ const require = createRequire(import.meta.url);
 
 // Load the native addon (prefers prebuilds/, falls back to build/Release)
 // https://github.com/prebuild/node-gyp-build
+ensureGStreamerOnPath();
 const nativeAddon: NativeAddon = require("node-gyp-build")(projectRoot);
 
 /**
