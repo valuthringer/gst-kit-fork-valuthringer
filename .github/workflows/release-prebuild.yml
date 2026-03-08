@@ -54,18 +54,27 @@ jobs:
           }
 
           $pkgconfigPath = Split-Path -Parent $pcFile
+          # Make it available immediately in this step (GITHUB_ENV only affects subsequent steps)
+          if ($env:PKG_CONFIG_PATH) {
+            $env:PKG_CONFIG_PATH = "$pkgconfigPath;$env:PKG_CONFIG_PATH"
+          } else {
+            $env:PKG_CONFIG_PATH = $pkgconfigPath
+          }
           "PKG_CONFIG_PATH=$pkgconfigPath" | Out-File -FilePath $env:GITHUB_ENV -Append
 
           # Also set a root hint if we can infer it from the path
           # ...\<version>\msvc_x86_64\lib\pkgconfig
           if ($pcFile -match '(.*\\msvc_x86_64)\\lib\\pkgconfig\\gstreamer-1\.0\.pc$') {
             $gstRoot = $Matches[1]
+            $env:GSTREAMER_1_0_ROOT_MSVC_X86_64 = $gstRoot
             "GSTREAMER_1_0_ROOT_MSVC_X86_64=$gstRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
           }
 
           pkg-config --version
-          pkg-config --exists gstreamer-1.0
-          if ($LASTEXITCODE -ne 0) { throw 'pkg-config cannot find gstreamer-1.0' }
+          Write-Host "PKG_CONFIG_PATH=$env:PKG_CONFIG_PATH"
+          pkg-config --modversion gstreamer-1.0
+          if ($LASTEXITCODE -ne 0) { throw 'pkg-config cannot find gstreamer-1.0 (modversion failed)' }
+          pkg-config --cflags --libs gstreamer-1.0
 
       - name: Install GStreamer dependencies (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
@@ -87,14 +96,16 @@ jobs:
       - name: Install GStreamer dependencies (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          brew update
-          brew install gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly pkg-config
-          echo "PKG_CONFIG_PATH=$(brew --prefix)/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-          echo "LIBRARY_PATH=$(brew --prefix)/lib:$LIBRARY_PATH" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=$(brew --prefix)/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          export HOMEBREW_NO_AUTO_UPDATE=1
+          export HOMEBREW_NO_INSTALL_CLEANUP=1
+          # Only what's needed to compile the addon; avoid pulling heavy deps.
+          brew install pkg-config gstreamer gst-plugins-base
+          echo "PKG_CONFIG_PATH=$(brew --prefix gstreamer)/lib/pkgconfig:$(brew --prefix)/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+          echo "LIBRARY_PATH=$(brew --prefix gstreamer)/lib:$(brew --prefix)/lib:$LIBRARY_PATH" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$(brew --prefix gstreamer)/lib:$(brew --prefix)/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Build TypeScript dist
         run: npm run build:ts
@@ -124,7 +135,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Build TypeScript dist
         run: npm run build:ts
