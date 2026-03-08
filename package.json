@@ -20,6 +20,7 @@
   ],
   "scripts": {
     "clean": "node scripts/clean.mjs",
+    "install": "node -e \"process.exit(0)\"",
     "build:native": "node-gyp rebuild",
     "build:ts": "rollup -c rollup.config.mjs",
     "build": "npm run clean && npm run build:native && npm run build:ts",
