@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        os: [windows-latest, ubuntu-latest, macos-14]
         # Build for multiple Node versions to generate multiple N-API prebuilds.
         # This improves "npm i without Build Tools" compatibility.
         node-version: [20.x, 22.x]
@@ -94,7 +94,7 @@ jobs:
             pkg-config
 
       - name: Install GStreamer dependencies (macOS)
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-14'
         run: |
           export HOMEBREW_NO_AUTO_UPDATE=1
           export HOMEBREW_NO_INSTALL_CLEANUP=1
@@ -119,9 +119,62 @@ jobs:
           name: prebuilds-${{ matrix.os }}-node${{ matrix.node-version }}
           path: prebuilds/
 
+  build-prebuilds-linux-arm:
+    name: Build prebuilds (linux ${{ matrix.arch }} / Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+        include:
+          - arch: arm64
+            platform: linux/arm64
+          - arch: armv7
+            platform: linux/arm/v7
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build prebuilds inside ${{ matrix.platform }} container
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker run --rm \
+            --platform "${{ matrix.platform }}" \
+            -v "${GITHUB_WORKSPACE}:/work" \
+            -w /work \
+            -e CI=1 \
+            -e npm_config_loglevel=warn \
+            node:${{ matrix.node }}-bookworm \
+            bash -lc '
+              set -euo pipefail
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                python3 \
+                build-essential \
+                pkg-config \
+                libgstreamer1.0-dev \
+                libgstreamer-plugins-base1.0-dev \
+                libgstreamer-plugins-bad1.0-dev
+
+              npm install --no-audit --no-fund --ignore-scripts
+              npm run build:ts
+              npm run prebuild
+            '
+
+      - name: Upload prebuilds artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: prebuilds-linux-${{ matrix.arch }}-node${{ matrix.node }}
+          path: prebuilds/
+
   publish:
     name: Publish npm package
-    needs: [build-prebuilds]
+    needs: [build-prebuilds, build-prebuilds-linux-arm]
     runs-on: ubuntu-latest
 
     steps:
