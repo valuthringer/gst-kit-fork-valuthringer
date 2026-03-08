@@ -1,6 +1,6 @@
 {
   "name": "@valuthringer/gst-kit",
-  "version": "0.2.4-val.0",
+  "version": "0.2.4-val.1",
   "type": "module",
   "exports": {
     ".": {
