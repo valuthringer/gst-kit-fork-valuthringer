@@ -133,6 +133,26 @@ jobs:
           node-version: 22.x
           cache: npm
           registry-url: https://registry.npmjs.org
+          scope: "@valuthringer"
+          always-auth: true
+
+      - name: Verify npm auth token
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "Missing secrets.NPM_TOKEN (create an npm access token with publish rights and add it as a repo secret)."
+            exit 1
+          fi
+
+      - name: Configure npm auth
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm config set //registry.npmjs.org/:_authToken="$NODE_AUTH_TOKEN"
+          npm whoami
 
       - name: Install dependencies
         run: npm install --no-audit --no-fund
