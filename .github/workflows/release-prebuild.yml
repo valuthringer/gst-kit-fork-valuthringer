@@ -34,38 +34,46 @@ jobs:
           choco install -y pkgconfiglite
           choco install -y gstreamer gstreamer-devel
 
-          # Try to auto-discover pkg-config path for the installed MSVC x86_64 distribution
-          $candidates = @(
+          # Robustly locate gstreamer-1.0.pc (Chocolatey layout can vary)
+          $searchRoots = @(
             'C:\\Program Files\\gstreamer',
-            'C:\\gstreamer'
+            'C:\\gstreamer',
+            'C:\\ProgramData\\chocolatey\\lib'
           )
 
-          $pkgconfigPath = $null
-          foreach ($base in $candidates) {
-            if (Test-Path $base) {
-              $hits = Get-ChildItem -Path $base -Directory -ErrorAction SilentlyContinue |
-                ForEach-Object { Join-Path $_.FullName 'msvc_x86_64\\lib\\pkgconfig' } |
-                Where-Object { Test-Path (Join-Path $_ 'gstreamer-1.0.pc') }
-
-              if ($hits -and $hits.Count -gt 0) {
-                # Prefer the highest version folder by name
-                $pkgconfigPath = ($hits | Sort-Object)[-1]
-                break
-              }
-            }
+          $pcFile = $null
+          foreach ($root in $searchRoots) {
+            if (-not (Test-Path $root)) { continue }
+            $hit = Get-ChildItem -Path $root -Recurse -Filter 'gstreamer-1.0.pc' -ErrorAction SilentlyContinue |
+              Select-Object -First 1
+            if ($hit) { $pcFile = $hit.FullName; break }
           }
 
-          if (-not $pkgconfigPath) {
+          if (-not $pcFile) {
             throw 'Could not locate gstreamer-1.0.pc after choco install gstreamer-devel'
           }
 
+          $pkgconfigPath = Split-Path -Parent $pcFile
           "PKG_CONFIG_PATH=$pkgconfigPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          # Also set a root hint if we can infer it from the path
+          # ...\<version>\msvc_x86_64\lib\pkgconfig
+          if ($pcFile -match '(.*\\msvc_x86_64)\\lib\\pkgconfig\\gstreamer-1\.0\.pc$') {
+            $gstRoot = $Matches[1]
+            "GSTREAMER_1_0_ROOT_MSVC_X86_64=$gstRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          }
+
+          pkg-config --version
+          pkg-config --exists gstreamer-1.0
+          if ($LASTEXITCODE -ne 0) { throw 'pkg-config cannot find gstreamer-1.0' }
 
       - name: Install GStreamer dependencies (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            build-essential \
+            python3 \
             libgstreamer1.0-dev \
             libgstreamer-plugins-base1.0-dev \
             libgstreamer-plugins-bad1.0-dev \
@@ -130,7 +138,7 @@ jobs:
         run: |
           rm -rf prebuilds
           mkdir -p prebuilds
-          cp -R _prebuilds/prebuilds-*/** prebuilds/ || true
+          find _prebuilds -type f -path '*/prebuilds/*' -print -exec bash -lc 'dst="prebuilds/${1#*prebuilds/}"; mkdir -p "$(dirname "$dst")"; cp -f "$1" "$dst"' _ {} \;
 
       - name: Publish
         env:
