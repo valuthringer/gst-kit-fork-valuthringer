@@ -163,8 +163,9 @@ interface NativeAddon {
 // Create require function for ESM
 const require = createRequire(import.meta.url);
 
-// Load the native addon
-const nativeAddon: NativeAddon = require(join(projectRoot, "build/Release/gst_kit.node"));
+// Load the native addon (prefers prebuilds/, falls back to build/Release)
+// https://github.com/prebuild/node-gyp-build
+const nativeAddon: NativeAddon = require("node-gyp-build")(projectRoot);
 
 /**
  * https://gstreamer.freedesktop.org/documentation/gstreamer/gstbuffer.html?gi-language=c#GstBufferFlags

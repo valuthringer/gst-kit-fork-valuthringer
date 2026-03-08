@@ -1,0 +1,136 @@
+name: Release (prebuilds)
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-prebuilds:
+    name: Build prebuilds (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        node-version: [22.x]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install GStreamer + pkg-config (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          choco install -y pkgconfiglite
+          choco install -y gstreamer gstreamer-devel
+
+          # Try to auto-discover pkg-config path for the installed MSVC x86_64 distribution
+          $candidates = @(
+            'C:\\Program Files\\gstreamer',
+            'C:\\gstreamer'
+          )
+
+          $pkgconfigPath = $null
+          foreach ($base in $candidates) {
+            if (Test-Path $base) {
+              $hits = Get-ChildItem -Path $base -Directory -ErrorAction SilentlyContinue |
+                ForEach-Object { Join-Path $_.FullName 'msvc_x86_64\\lib\\pkgconfig' } |
+                Where-Object { Test-Path (Join-Path $_ 'gstreamer-1.0.pc') }
+
+              if ($hits -and $hits.Count -gt 0) {
+                # Prefer the highest version folder by name
+                $pkgconfigPath = ($hits | Sort-Object)[-1]
+                break
+              }
+            }
+          }
+
+          if (-not $pkgconfigPath) {
+            throw 'Could not locate gstreamer-1.0.pc after choco install gstreamer-devel'
+          }
+
+          "PKG_CONFIG_PATH=$pkgconfigPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Install GStreamer dependencies (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgstreamer1.0-dev \
+            libgstreamer-plugins-base1.0-dev \
+            libgstreamer-plugins-bad1.0-dev \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad \
+            gstreamer1.0-plugins-ugly \
+            gstreamer1.0-libav \
+            pkg-config
+
+      - name: Install GStreamer dependencies (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew update
+          brew install gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly pkg-config
+          echo "PKG_CONFIG_PATH=$(brew --prefix)/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+          echo "LIBRARY_PATH=$(brew --prefix)/lib:$LIBRARY_PATH" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$(brew --prefix)/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build TypeScript dist
+        run: npm run build:ts
+
+      - name: Build prebuilds (N-API)
+        run: npm run prebuild
+
+      - name: Upload prebuilds artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: prebuilds-${{ matrix.os }}
+          path: prebuilds/
+
+  publish:
+    name: Publish npm package
+    needs: [build-prebuilds]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 22.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build TypeScript dist
+        run: npm run build:ts
+
+      - name: Download prebuilds artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: _prebuilds
+
+      - name: Merge prebuilds
+        run: |
+          rm -rf prebuilds
+          mkdir -p prebuilds
+          cp -R _prebuilds/prebuilds-*/** prebuilds/ || true
+
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish

@@ -1066,3 +1066,16 @@ MIT License - see LICENSE file for details.
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and contribution guidelines.
+
+## Prebuilt binaries (fork)
+
+This fork is intended to publish prebuilt (N-API) binaries so downstream apps can install without a local C++ toolchain.
+
+### Releasing
+
+- Set `NPM_TOKEN` as a GitHub Actions secret in the fork repository.
+- Create and push a tag like `v0.2.4-val.0`.
+- The workflow `.github/workflows/release-prebuild.yml` will:
+  - build `prebuilds/` on Windows/macOS/Linux
+  - merge them
+  - `npm publish`

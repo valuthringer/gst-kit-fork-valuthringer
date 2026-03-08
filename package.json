@@ -1,6 +1,6 @@
 {
   "name": "@valuthringer/gst-kit",
-  "version": "0.2.4",
+  "version": "0.2.4-val.0",
   "type": "module",
   "exports": {
     ".": {
@@ -10,17 +10,25 @@
     }
   },
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist/",
+    "src/",
+    "binding.gyp",
+    "prebuilds/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "clean": "node scripts/clean.mjs",
     "build:native": "node-gyp rebuild",
     "build:ts": "rollup -c rollup.config.mjs",
     "build": "npm run clean && npm run build:native && npm run build:ts",
+    "prebuild": "prebuildify --napi --strip",
     "test:node": "node modules/common.cjs && node modules/esm.mjs",
     "test:bun": "bun modules/common.cjs && bun modules/esm.mjs",
     "test:unit": "vitest --no-watch",
     "test": "npm run test:node && npm run test:unit",
     "prepublishOnly": "npm run build:ts",
-    "postinstall": "node scripts/ensure-native-addon.mjs",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
     "format": "prettier --write \"**/*.{ts,js,json,md}\""
@@ -49,7 +57,7 @@
   "description": "Node.js binding for GStreamer, providing high-level APIs for multimedia streaming and processing",
   "dependencies": {
     "node-addon-api": "8.5.0",
-    "node-gyp": "12.2.0"
+    "node-gyp-build": "4.8.4"
   },
   "devDependencies": {
     "@types/node": "25.2.2",
@@ -59,7 +67,9 @@
     "@rollup/plugin-node-resolve": "16.0.3",
     "@rollup/plugin-typescript": "12.3.0",
     "eslint": "9.39.1",
+    "node-gyp": "12.2.0",
     "prettier": "3.8.1",
+    "prebuildify": "6.0.1",
     "rollup": "4.57.1",
     "rollup-plugin-dts": "6.3.0",
     "tslib": "2.8.1",
