@@ -13,6 +13,7 @@
   "files": [
     "dist/",
     "src/",
+    "scripts/",
     "binding.gyp",
     "prebuilds/",
     "README.md",
