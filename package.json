@@ -59,7 +59,8 @@
   "description": "Node.js binding for GStreamer, providing high-level APIs for multimedia streaming and processing",
   "dependencies": {
     "node-addon-api": "8.7.0",
-    "node-gyp": "12.3.0"
+    "node-gyp": "12.3.0",
+    "node-gyp-build": "4.8.4"
   },
   "devDependencies": {
     "@types/node": "25.9.1",
