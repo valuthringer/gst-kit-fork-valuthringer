@@ -13,6 +13,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         node-version: [20.x, lts/*, node]
+        exclude:
+          # Node 26+ is Clang/LLD-built on Windows; its common.gypi injects
+          # LLD-specific linker flags (lldltojobs) that MSVC fatally rejects.
+          - os: windows-latest
+            node-version: node
 
     steps:
       - uses: actions/checkout@v4
