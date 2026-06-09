@@ -27,7 +27,7 @@ if (!addonFound) {
   if (!existsSync(nodeModulesPath) || !existsSync(nodeAddonApiPath)) {
     console.log("Dependencies not found, installing...");
     try {
-      execSync("npm install", { stdio: "inherit", cwd: projectRoot });
+      execSync("npm install --ignore-scripts", { stdio: "inherit", cwd: projectRoot });
     } catch (error) {
       console.error("Failed to install dependencies:", error.message);
       process.exit(1);
