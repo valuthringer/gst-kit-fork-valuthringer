@@ -2,21 +2,28 @@ import { existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
-// Get the directory name of the current module
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-// Get the project root directory (one level up from __dirname)
 const projectRoot = join(__dirname, "..");
-const addonPath = join(projectRoot, "build/Release/gst_kit.node");
-const nodeModulesPath = join(projectRoot, "node_modules");
-const nodeAddonApiPath = join(nodeModulesPath, "node-addon-api");
+const require = createRequire(import.meta.url);
 
-if (!existsSync(addonPath)) {
+// Try node-gyp-build first: it resolves prebuilds/ before build/Release/
+let addonFound = false;
+try {
+  require("node-gyp-build")(projectRoot);
+  addonFound = true;
+} catch {
+  addonFound = false;
+}
+
+if (!addonFound) {
   console.log("GStreamer Kit native addon not found, building...");
 
-  // Check if dependencies are installed
+  const nodeModulesPath = join(projectRoot, "node_modules");
+  const nodeAddonApiPath = join(nodeModulesPath, "node-addon-api");
+
   if (!existsSync(nodeModulesPath) || !existsSync(nodeAddonApiPath)) {
     console.log("Dependencies not found, installing...");
     try {
