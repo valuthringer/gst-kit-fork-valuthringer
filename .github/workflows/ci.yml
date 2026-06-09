@@ -11,7 +11,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         node-version: [20.x, lts/*, node]
 
     steps:
@@ -46,10 +46,45 @@ jobs:
           export HOMEBREW_NO_AUTO_UPDATE=1
           export HOMEBREW_NO_INSTALL_CLEANUP=1
           brew install pkg-config gstreamer gst-plugins-base
-          # Set environment variables for GStreamer library paths
           echo "PKG_CONFIG_PATH=$(brew --prefix gstreamer)/lib/pkgconfig:$(brew --prefix)/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
           echo "LIBRARY_PATH=$(brew --prefix gstreamer)/lib:$(brew --prefix)/lib:$LIBRARY_PATH" >> $GITHUB_ENV
           echo "LD_LIBRARY_PATH=$(brew --prefix gstreamer)/lib:$(brew --prefix)/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+
+      - name: Install GStreamer + pkg-config (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          choco install -y pkgconfiglite
+          choco install -y gstreamer gstreamer-devel
+
+          $searchRoots = @(
+            'C:\\Program Files\\gstreamer',
+            'C:\\gstreamer',
+            'C:\\ProgramData\\chocolatey\\lib'
+          )
+
+          $pcFile = $null
+          foreach ($root in $searchRoots) {
+            if (-not (Test-Path $root)) { continue }
+            $hit = Get-ChildItem -Path $root -Recurse -Filter 'gstreamer-1.0.pc' -ErrorAction SilentlyContinue |
+              Select-Object -First 1
+            if ($hit) { $pcFile = $hit.FullName; break }
+          }
+
+          if (-not $pcFile) {
+            throw 'Could not locate gstreamer-1.0.pc after choco install gstreamer-devel'
+          }
+
+          $pkgconfigPath = Split-Path -Parent $pcFile
+          "PKG_CONFIG_PATH=$pkgconfigPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          if ($pcFile -match '(.*\\msvc_x86_64)\\lib\\pkgconfig\\gstreamer-1\.0\.pc$') {
+            $gstRoot = $Matches[1]
+            "GSTREAMER_1_0_ROOT_MSVC_X86_64=$gstRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          }
+
+          pkg-config --modversion gstreamer-1.0
+          if ($LASTEXITCODE -ne 0) { throw 'pkg-config cannot find gstreamer-1.0' }
 
       - name: Install dependencies
         run: npm install --no-audit --no-fund
