@@ -76,10 +76,17 @@ jobs:
           }
 
           $pkgconfigPath = Split-Path -Parent $pcFile
+          # Set in-process so the verification below sees it immediately
+          if ($env:PKG_CONFIG_PATH) {
+            $env:PKG_CONFIG_PATH = "$pkgconfigPath;$env:PKG_CONFIG_PATH"
+          } else {
+            $env:PKG_CONFIG_PATH = $pkgconfigPath
+          }
           "PKG_CONFIG_PATH=$pkgconfigPath" | Out-File -FilePath $env:GITHUB_ENV -Append
 
           if ($pcFile -match '(.*\\msvc_x86_64)\\lib\\pkgconfig\\gstreamer-1\.0\.pc$') {
             $gstRoot = $Matches[1]
+            $env:GSTREAMER_1_0_ROOT_MSVC_X86_64 = $gstRoot
             "GSTREAMER_1_0_ROOT_MSVC_X86_64=$gstRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
           }
 
